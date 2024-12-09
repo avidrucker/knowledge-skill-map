@@ -210,24 +210,24 @@ const App = () => {
   }, [removeTempNodes]);
 
   const deleteNodeAndDescendants = useCallback((nodeId) => {
-    // console.log("deleting node: ", nodeId);
     if (nodeId === START_NODE_ID) return;
     const cy = cyRef.current;
     if (!cy) return;
-    const node = cy.getElementById(nodeId);
-    const descendants = node.outgoers('node');
-    const toRemoveIds = new Set([nodeId]);
-    descendants.forEach((d) => toRemoveIds.add(d.id()));
-
+  
+    const startingNode = cy.getElementById(nodeId);
+    // Use successors() to get all reachable nodes (descendants) instead of descendants()
+    const descendants = startingNode.successors().nodes().union(startingNode);
+  
+    const idsToRemove = descendants.map((n) => n.id());
     setElements((els) => els.filter((el) => {
       const elId = el.data.id;
-      if (toRemoveIds.has(elId)) return false;
-      if (el.data.source && toRemoveIds.has(el.data.source)) return false;
-      if (el.data.target && toRemoveIds.has(el.data.target)) return false;
+      if (idsToRemove.includes(elId)) return false;
+      if (el.data.source && idsToRemove.includes(el.data.source)) return false;
+      if (el.data.target && idsToRemove.includes(el.data.target)) return false;
       return true;
     }));
     removeTempNodes();
-  }, [removeTempNodes, setElements]);
+  }, [removeTempNodes, setElements]);  
 
   const changeNodeColorType = useCallback((nodeId, newType) => {
     // console.log("changing node color: ", nodeId, newType);
