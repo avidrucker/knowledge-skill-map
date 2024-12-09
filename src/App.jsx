@@ -311,20 +311,13 @@ const App = () => {
         const parentNode = cyRef.current.getElementById(parentNodeId);
         startRenaming(parentNode);
       } else if (label === "Add New") {
-        //// TODO: add new node
         const newId = addNode(parentNodeId);
-        // console.log("newId: ", newId);
         setTimeout(() => {
           fitTextToNode(cyRef.current, newId);
-          // console.log("cheese");
         }, 0);
       } else {
         // color button
-        console.log("color change button pressed");
         changeNodeColorType(parentNodeId, label);
-        // setTimeout(() => {
-        //   fitTextToNode(cyRef.current, parentNodeId);
-        // }, 0);
       }
     },
     [changeNodeColorType, deleteNodeAndDescendants, startRenaming]
@@ -335,16 +328,12 @@ const App = () => {
     if (!cy) return;
 
     const onReady = () => { 
-      // console.log("Cytoscape is ready. Applying event handlers.");
 
       const onTapNode = (evt) => {
         const node = evt.target;
 
-        // console.log("Tap node: ", node.id());
-
         if (node.hasClass("action-node")) {
           handleActionNodeClick(node);
-          // console.log("Handling button press...");
           removeTempNodes();
           return;
         }
@@ -385,13 +374,14 @@ const App = () => {
         }
       };
 
+      // prevent handlers from being reattached on hot-reload
       if (!cy.scratch('_handlersAttached')) { 
         cy.on("tap", "node", onTapNode);
         cy.on("tap", onTapBackground);
         // Mark that handlers are now attached
         cy.scratch('_handlersAttached', true);
       } else {
-        console.log("handlers already attached, not reattaching");
+        // console.log("handlers already attached, not reattaching");
       }
 
       return () => {
@@ -403,21 +393,6 @@ const App = () => {
     cy.ready(onReady);
 
   }, []); // Empty dependency array ensures this runs once on mount
-
-  // useEffect(() => {
-  //   const cy = cyRef.current;
-  //   if (!cy) return;
-
-  //   cy.ready(() => {
-  //     // console.log("Initial Cytoscape graph: ", cy.json());
-  //     const initialNode = cy.getElementById("node-1");
-  //     if (initialNode) {
-  //       console.log("Initial node found: ", initialNode.data());
-  //     } else {
-  //       console.error("Initial node is missing!");
-  //     }
-  //   });
-  // }, []);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -461,45 +436,32 @@ const App = () => {
   }
 
   function fitTextToNode(cy, nodeId, minSize = 6, maxSize = 40) {
-    // console.log("resizing...");
     const node = cy.getElementById(nodeId);
-    // console.log("node to resize: ", node.id());
 
     let size = minSize;
     let fits = true;
-    // console.log("before while loop, size is ", size);
 
     // Increase size until it doesn't fit
     while (size <= maxSize) {
-      // console.log("inside of while loop, size is: ", size);
       node.data("fontSize", size);
-      ////
-      // setTimeout(() => {
-      //   console.log("waiting before calling forceRender...")
-      // }, 0)
       cy.forceRender();
 
       const labelBB = node.boundingBox({ label: true });
       const nodeBB = node.boundingBox({});
       const nodeDiameter = Math.min(nodeBB.w, nodeBB.h);
-      // console.log("labelBB, nodeBB, nodeDiameter: ", labelBB, nodeBB, nodeDiameter);
 
       // If it doesn't fit, break out
       if ((labelBB.w > (nodeDiameter * 1)) || (labelBB.h > (nodeDiameter * 1))) {
         fits = false;
-        // console.log("breaking because labelBB.w ", labelBB.w, " is greating than ", 
-        //   nodeDiameter * 0.9, " or, ", labelBB.h, " is greater than ", nodeDiameter * 0.9)
         break;
       }
 
       size++;
-      // console.log("size increased to ", size);
     }
 
     // If the last increment didn't fit, step back to the previous size
     if (!fits) {
       size = size - 1;
-      // console.log("next size: ", size);
       node.data("fontSize", size);
     }
     
