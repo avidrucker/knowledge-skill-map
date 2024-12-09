@@ -26,9 +26,9 @@ const App = () => {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   // const [newLabel, setNewLabel] = useState('');
 
-  // const [isRenaming, setIsRenaming] = useState(false);
-  // const [renameValue, setRenameValue] = useState('');
-  // const [renamePosition, setRenamePosition] = useState({ x: 0, y: 0 });
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renamePosition, setRenamePosition] = useState({ x: 0, y: 0 });
 
   const tempNodesRef = useRef([]);
   const lastClickTimeRef = useRef(0);
@@ -190,36 +190,36 @@ const App = () => {
     tempNodesRef.current.push(...actionButtons.map(a => a.data.id));
   }, [setElements]);
 
-  // const startRenaming = useCallback((node) => {
-  //   setIsRenaming(true);
-  //   setRenameValue(node.data('label'));
-  //   const containerRect = cyRef.current.container().getBoundingClientRect();
-  //   const pos = node.position(); // use node.position() instead of renderedPosition to avoid offsets
-  //   setRenamePosition({
-  //     x: containerRect.left + pos.x,
-  //     y: containerRect.top + pos.y,
-  //   });
-  // }, []);
+  const startRenaming = useCallback((node) => {
+    setIsRenaming(true);
+    setRenameValue(node.data('label'));
+    const containerRect = cyRef.current.container().getBoundingClientRect();
+    const pos = node.position(); // use node.position() instead of renderedPosition to avoid offsets
+    setRenamePosition({
+      x: containerRect.left + pos.x,
+      y: containerRect.top + pos.y,
+    });
+  }, []);
 
-  // const commitRename = useCallback(() => {
-  //   if (selectedNodeId) {
-  //     setElements((els) => els.map((el) => {
-  //       if (el.data.id === selectedNodeId) {
-  //         return { ...el, data: { ...el.data, label: renameValue } };
-  //       }
-  //       return el;
-  //     }));
-  //   }
-  //   setIsRenaming(false);
-  //   setRenameValue('');
-  //   removeTempNodes();
-  // }, [selectedNodeId, renameValue, setElements, removeTempNodes]);
+  const commitRename = useCallback(() => {
+    if (selectedNodeId) {
+      setElements((els) => els.map((el) => {
+        if (el.data.id === selectedNodeId) {
+          return { ...el, data: { ...el.data, label: renameValue } };
+        }
+        return el;
+      }));
+    }
+    setIsRenaming(false);
+    setRenameValue('');
+    removeTempNodes();
+  }, [selectedNodeId, renameValue, setElements, removeTempNodes]);
 
-  // const cancelRename = useCallback(() => {
-  //   setIsRenaming(false);
-  //   setRenameValue('');
-  //   removeTempNodes();
-  // }, [removeTempNodes]);
+  const cancelRename = useCallback(() => {
+    setIsRenaming(false);
+    setRenameValue('');
+    removeTempNodes();
+  }, [removeTempNodes]);
 
   // const deleteNodeAndDescendants = useCallback((nodeId) => {
   //   // console.log("deleting node: ", nodeId);
@@ -275,8 +275,8 @@ const App = () => {
     if (label === 'Delete') {
       // deleteNodeAndDescendants(parentNodeId);
     } else if (label === 'Rename') {
-      // const parentNode = cyRef.current.getElementById(parentNodeId);
-      // startRenaming(parentNode);
+      const parentNode = cyRef.current.getElementById(parentNodeId);
+      startRenaming(parentNode);
     } else if (label === 'Add New') {
       //// TODO: add new node
       addNode(parentNodeId);
@@ -306,9 +306,6 @@ const App = () => {
           removeTempNodes();
           return;
         }
-  
-        // const nodeId = evt.target.data('id');
-        // console.log("nodeId: ", nodeId);
   
         removeTempNodes();
   
@@ -373,10 +370,10 @@ const App = () => {
     });
   }, []);
 
-  // const handleKeyDown = (e) => {
-  //   if (e.key === 'Enter') commitRename();
-  //   else if (e.key === 'Escape') cancelRename();
-  // };
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') commitRename();
+    else if (e.key === 'Escape') cancelRename();
+  };
 
   return (
     <div style={{ width: '100%', height: '100vh', position: 'relative' }}>
@@ -509,7 +506,7 @@ const App = () => {
         minZoom={0.5}
         maxZoom={2}
       />
-      {/* {isRenaming && (
+      {isRenaming && (
         <input
           type="text"
           value={renameValue}
@@ -526,7 +523,7 @@ const App = () => {
           }}
           autoFocus
         />
-      )} */}
+      )}
     </div>
   );
 };
