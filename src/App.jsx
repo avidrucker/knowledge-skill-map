@@ -68,38 +68,26 @@ const App = () => {
   };
 
   // Delete the selected node and its descendants
-  // const deleteNode = () => {
-  //   if (selectedNodeId && cyRef.current) {
-  //     const nodesToRemove = cyRef.current.collection();
-  //     const startingNode = cyRef.current.$id(selectedNodeId);
-  //     nodesToRemove.merge(startingNode.descendants().union(startingNode));
-  //     setElements((els) =>
-  //       els.filter((el) => !nodesToRemove.ids().includes(el.data.id))
-  //     );
-  //     setSelectedNodeId(null);
-  //   } else {
-  //     alert('Please select a node to delete.');
-  //   }
-  // };
-
-  // Edit the label of the selected node
-  // const editNodeLabel = () => {
-  //   if (selectedNodeId) {
-  //     setElements((els) =>
-  //       els.map((el) => {
-  //         if (el.data.id === selectedNodeId) {
-  //           return {
-  //             ...el,
-  //             data: { ...el.data, label: newLabel },
-  //           };
-  //         }
-  //         return el;
-  //       })
-  //     );
-  //   } else {
-  //     alert('Please select a node to edit.');
-  //   }
-  // };
+  const deleteNode = (currentNodeId) => {
+    if (currentNodeId && cyRef.current) {
+      const nodesToRemove = cyRef.current.collection();
+      const startingNode = cyRef.current.$id(currentNodeId);
+      nodesToRemove.merge(startingNode.descendants().union(startingNode));
+      const idsToRemove = nodesToRemove.map((n) => n.id());
+      setElements((els) =>
+        els.filter((el) => {
+          const elId = el.data.id;
+          if (idsToRemove.includes(elId)) return false;
+          if (el.data.source && idsToRemove.includes(el.data.source)) return false;
+          if (el.data.target && idsToRemove.includes(el.data.target)) return false;
+          return true;
+        })
+      );
+      setSelectedNodeId(null);
+    } else {
+      alert('Please select a node to delete.');
+    }
+  };
 
   const removeTempNodes = useCallback(() => {
     // console.log("removing temp nodes: ", elements);
@@ -221,25 +209,25 @@ const App = () => {
     removeTempNodes();
   }, [removeTempNodes]);
 
-  // const deleteNodeAndDescendants = useCallback((nodeId) => {
-  //   // console.log("deleting node: ", nodeId);
-  //   if (nodeId === START_NODE_ID) return;
-  //   const cy = cyRef.current;
-  //   if (!cy) return;
-  //   const node = cy.getElementById(nodeId);
-  //   const descendants = node.outgoers('node');
-  //   const toRemoveIds = new Set([nodeId]);
-  //   descendants.forEach((d) => toRemoveIds.add(d.id()));
+  const deleteNodeAndDescendants = useCallback((nodeId) => {
+    // console.log("deleting node: ", nodeId);
+    if (nodeId === START_NODE_ID) return;
+    const cy = cyRef.current;
+    if (!cy) return;
+    const node = cy.getElementById(nodeId);
+    const descendants = node.outgoers('node');
+    const toRemoveIds = new Set([nodeId]);
+    descendants.forEach((d) => toRemoveIds.add(d.id()));
 
-  //   setElements((els) => els.filter((el) => {
-  //     const elId = el.data.id;
-  //     if (toRemoveIds.has(elId)) return false;
-  //     if (el.data.source && toRemoveIds.has(el.data.source)) return false;
-  //     if (el.data.target && toRemoveIds.has(el.data.target)) return false;
-  //     return true;
-  //   }));
-  //   removeTempNodes();
-  // }, [removeTempNodes, setElements]);
+    setElements((els) => els.filter((el) => {
+      const elId = el.data.id;
+      if (toRemoveIds.has(elId)) return false;
+      if (el.data.source && toRemoveIds.has(el.data.source)) return false;
+      if (el.data.target && toRemoveIds.has(el.data.target)) return false;
+      return true;
+    }));
+    removeTempNodes();
+  }, [removeTempNodes, setElements]);
 
   const changeNodeColorType = useCallback((nodeId, newType) => {
     // console.log("changing node color: ", nodeId, newType);
@@ -273,7 +261,8 @@ const App = () => {
     }
 
     if (label === 'Delete') {
-      // deleteNodeAndDescendants(parentNodeId);
+      deleteNodeAndDescendants(parentNodeId);
+      // deleteNode(parentNodeId);
     } else if (label === 'Rename') {
       const parentNode = cyRef.current.getElementById(parentNodeId);
       startRenaming(parentNode);
