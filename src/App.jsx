@@ -67,28 +67,6 @@ const App = () => {
     }
   };
 
-  // Delete the selected node and its descendants
-  const deleteNode = (currentNodeId) => {
-    if (currentNodeId && cyRef.current) {
-      const nodesToRemove = cyRef.current.collection();
-      const startingNode = cyRef.current.$id(currentNodeId);
-      nodesToRemove.merge(startingNode.descendants().union(startingNode));
-      const idsToRemove = nodesToRemove.map((n) => n.id());
-      setElements((els) =>
-        els.filter((el) => {
-          const elId = el.data.id;
-          if (idsToRemove.includes(elId)) return false;
-          if (el.data.source && idsToRemove.includes(el.data.source)) return false;
-          if (el.data.target && idsToRemove.includes(el.data.target)) return false;
-          return true;
-        })
-      );
-      setSelectedNodeId(null);
-    } else {
-      alert('Please select a node to delete.');
-    }
-  };
-
   const removeTempNodes = useCallback(() => {
     // console.log("removing temp nodes: ", elements);
     setElements((els) =>
