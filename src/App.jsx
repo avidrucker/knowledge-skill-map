@@ -637,8 +637,7 @@ const App = () => {
     {
       selector: "node:selected",
       style: {
-        "border-width": 3,
-        "border-color": "#000",
+        "border-width": 3
       },
     },
   ];
