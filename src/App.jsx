@@ -89,7 +89,7 @@ function findLayoutThatFits(text, fontSize, targetSize, node, cy) {
     const labelBB = node.boundingBox({ label: true });
     // Check if both width and height of the label fit within targetSize
     if (labelBB.w <= targetSize && labelBB.h <= targetSize) {
-      return { label: candidate, fontSize };
+      return { label: candidate, fontSize: (fontSize * 0.8) };
     }
   }
 
@@ -580,6 +580,7 @@ const App = () => {
         label: "data(label)",
         "text-valign": "center",
         "text-halign": "center",
+        // "text-max-width": "50px",
         "text-wrap": "wrap",
         "font-size": "data(fontSize)",
         width: 80,
