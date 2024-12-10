@@ -35,7 +35,7 @@ const initialElements = [
 //
 
 /**
- * Break long text into multiple lines to fit better within a node.
+ * Break long text into multiple lines to fit better within a node (simple heuristic).
  */
 function balanceTextLines(text, maxCharsPerLine = 20) {
   const words = text.split(" ");
@@ -60,41 +60,105 @@ function balanceTextLines(text, maxCharsPerLine = 20) {
 }
 
 /**
- * Dynamically adjust font size so that text fits inside the node circle.
+ * Break text into a given number of lines as evenly as possible.
  */
-function fitTextToNode(cy, nodeId, setElements, minSize = 6, maxSize = 40) {
-  const node = cy.getElementById(nodeId);
-  let size = minSize;
-  let fits = true;
+function breakTextIntoLines(words, lineCount) {
+  const lines = [];
+  const wordsPerLine = Math.ceil(words.length / lineCount);
 
-  while (size <= maxSize) {
-    node.data("fontSize", size);
+  for (let i = 0; i < words.length; i += wordsPerLine) {
+    lines.push(words.slice(i, i + wordsPerLine).join(" "));
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Try to find a layout (with a certain number of lines) that fits within the target size at a given fontSize.
+ */
+function findLayoutThatFits(text, fontSize, targetSize, node, cy) {
+  const words = text.split(" ");
+
+  // Try increasing line counts from 1 up to number of words
+  for (let lineCount = 1; lineCount <= words.length; lineCount++) {
+    const candidate = breakTextIntoLines(words, lineCount);
+    node.data("label", candidate);
+    node.data("fontSize", fontSize);
     cy.forceRender();
 
     const labelBB = node.boundingBox({ label: true });
-    const nodeBB = node.boundingBox({});
-    const nodeDiameter = Math.min(nodeBB.w, nodeBB.h);
+    // Check if both width and height of the label fit within targetSize
+    if (labelBB.w <= targetSize && labelBB.h <= targetSize) {
+      return { label: candidate, fontSize };
+    }
+  }
 
-    if (labelBB.w > nodeDiameter || labelBB.h > nodeDiameter) {
-      fits = false;
+  return null;
+}
+
+/**
+ * Attempt to fit text in the node's circle, using multiple lines and adjusting fontSize.
+ * This tries from large to smaller font sizes until it finds the largest that fits.
+ */
+function fitTextInCircle(cy, nodeId, setElements) {
+  const node = cy.getElementById(nodeId);
+  if (!node || node.empty()) return;
+
+  const nodeBB = node.boundingBox({});
+  const nodeDiameter = Math.min(nodeBB.w, nodeBB.h);
+
+  // We'll fill about 90% of the node's diameter
+  const targetSize = Math.round(nodeDiameter * 1.0);
+
+  // Extract the current label (without line breaks, we'll re-add them)
+  const originalLabel = node.data("label").replace(/\n/g, " ");
+
+  let bestFit = null;
+  let maxFontSize = 100; // start large
+  let minFontSize = 6;
+
+  // We'll try from largest to smaller until we find a fitting layout
+  for (let size = maxFontSize; size >= minFontSize; size--) {
+    const layout = findLayoutThatFits(
+      originalLabel,
+      size,
+      targetSize,
+      node,
+      cy
+    );
+    if (layout) {
+      bestFit = layout;
+      // Since we are going top-down, the first fit is the largest font size that works
       break;
     }
-    size++;
   }
 
-  if (!fits) {
-    size = size - 1;
-    node.data("fontSize", size);
+  // If we found a best fit, update the node data in our elements
+  if (bestFit) {
+    setElements((els) =>
+      els.map((el) =>
+        el.data.id === nodeId
+          ? {
+              ...el,
+              data: {
+                ...el.data,
+                label: bestFit.label,
+                fontSize: bestFit.fontSize,
+              },
+            }
+          : el
+      )
+    );
+  } else {
+    // If no fit found, just leave as is or use a default small font
+    setElements((els) =>
+      els.map((el) =>
+        el.data.id === nodeId
+          ? { ...el, data: { ...el.data, fontSize: minFontSize } }
+          : el
+      )
+    );
   }
-
-  cy.forceRender();
-
-  // Update elements array with the new font size
-  setElements((els) =>
-    els.map((el) =>
-      el.data.id === nodeId ? { ...el, data: { ...el.data, fontSize: size } } : el
-    )
-  );
 }
 
 /**
@@ -165,7 +229,12 @@ const App = () => {
 
       const newId = `node-${nextId}`;
       const newNode = {
-        data: { id: newId, label: `Node ${nextId}`, type: "topic", fontSize: 12 },
+        data: {
+          id: newId,
+          label: `Node ${nextId}`,
+          type: "topic",
+          fontSize: 12,
+        },
         classes: ["basic-node"],
         group: "nodes",
         position: {
@@ -242,13 +311,19 @@ const App = () => {
 
       const renameId = `btn-rename-${nodeId}`;
       actionButtons.push({
-        ...createActionNode(renameId, "Rename", { x: pos.x - 70, y: pos.y - offsetY }),
+        ...createActionNode(renameId, "Rename", {
+          x: pos.x - 70,
+          y: pos.y - offsetY,
+        }),
         data: { id: renameId, label: "Rename", parentNode: nodeId },
       });
 
       const addNewId = `btn-add-new-${nodeId}`;
       actionButtons.push({
-        ...createActionNode(addNewId, "Add New", { x: pos.x, y: pos.y - offsetY }),
+        ...createActionNode(addNewId, "Add New", {
+          x: pos.x,
+          y: pos.y - offsetY,
+        }),
         data: { id: addNewId, label: "Add New", parentNode: nodeId },
       });
 
@@ -304,9 +379,9 @@ const App = () => {
         )
       );
 
-      // After label update, fit text
+      // After label update, fit text using our new method
       setTimeout(() => {
-        fitTextToNode(cy, selectedNodeId, setElements);
+        fitTextInCircle(cy, selectedNodeId, setElements);
       }, 0);
     }
     setIsRenaming(false);
@@ -386,7 +461,7 @@ const App = () => {
         const newId = addNode(parentNodeId);
         if (newId) {
           setTimeout(() => {
-            fitTextToNode(cyRef.current, newId, setElements);
+            fitTextInCircle(cyRef.current, newId, setElements);
           }, 0);
         }
       } else {
@@ -411,64 +486,65 @@ const App = () => {
     const cy = cyRef.current;
     if (!cy) return;
 
-    const onTapNode = (evt) => {
-      const node = evt.target;
+    const onReady = () => {
+      const onTapNode = (evt) => {
+        const node = evt.target;
 
-      // If it's an action-node (button), handle action
-      if (node.hasClass("action-node")) {
-        handleActionNodeClick(node);
+        // If it's an action-node (button), handle action
+        if (node.hasClass("action-node")) {
+          handleActionNodeClick(node);
+          clearActionNodes();
+          return;
+        }
+
+        // Clear any existing action nodes
         clearActionNodes();
-        return;
-      }
 
-      // Clear any existing action nodes
-      clearActionNodes();
+        const currentTime = Date.now();
+        // Check for double-click
+        if (
+          lastClickedNodeRef.current &&
+          lastClickedNodeRef.current.id() === node.id() &&
+          currentTime - lastClickTimeRef.current < 300
+        ) {
+          // Double click event
+          setSelectedNodeId(node.id());
+          displayNodeActions(node);
+          lastClickedNodeRef.current = null;
+          lastClickTimeRef.current = 0;
+        } else {
+          // Single click event
+          lastClickedNodeRef.current = node;
+          lastClickTimeRef.current = currentTime;
+          setSelectedNodeId(node.id());
+          displayColorOptions(node);
+        }
+      };
 
-      const currentTime = Date.now();
-      // Check for double-click
-      if (
-        lastClickedNodeRef.current &&
-        lastClickedNodeRef.current.id() === node.id() &&
-        currentTime - lastClickTimeRef.current < 300
-      ) {
-        // Double click event
-        setSelectedNodeId(node.id());
-        displayNodeActions(node);
-        lastClickedNodeRef.current = null;
-        lastClickTimeRef.current = 0;
+      const onTapBackground = (evt) => {
+        if (evt.target === cy) {
+          setSelectedNodeId(null);
+          clearActionNodes();
+        }
+      };
+
+      // Attach event handlers once
+      if (!cy.scratch("_handlersAttached")) {
+        console.log("attaching handlers");
+        cy.on("tap", "node", onTapNode);
+        cy.on("tap", onTapBackground);
+        cy.scratch("_handlersAttached", true);
       } else {
-        // Single click event
-        lastClickedNodeRef.current = node;
-        lastClickTimeRef.current = currentTime;
-        setSelectedNodeId(node.id());
-        displayColorOptions(node);
+        console.log("Handlers already attached, not reattaching.");
       }
-    };
 
-    const onTapBackground = (evt) => {
-      if (evt.target === cy) {
-        setSelectedNodeId(null);
-        clearActionNodes();
-      }
+      return () => {
+        cy.off("tap", "node", onTapNode);
+        cy.off("tap", onTapBackground);
+      };
     };
-
-    // Attach event handlers once
-    if (!cy.scratch("_handlersAttached")) {
-      cy.on("tap", "node", onTapNode);
-      cy.on("tap", onTapBackground);
-      cy.scratch("_handlersAttached", true);
-    }
-
-    return () => {
-      cy.off("tap", "node", onTapNode);
-      cy.off("tap", onTapBackground);
-    };
-  }, [
-    handleActionNodeClick,
-    clearActionNodes,
-    displayColorOptions,
-    displayNodeActions,
-  ]);
+    cy.ready(onReady);
+  }, []);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -478,7 +554,7 @@ const App = () => {
     cy.once("render", () => {
       const initialNode = cy.getElementById(START_NODE_ID);
       if (initialNode && initialNode.length > 0) {
-        fitTextToNode(cy, START_NODE_ID, setElements);
+        fitTextInCircle(cy, START_NODE_ID, setElements);
       }
     });
   }, [setElements]);
