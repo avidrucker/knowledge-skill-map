@@ -511,6 +511,7 @@ const App = () => {
         )
       );
       clearActionNodes();
+      console.log("color updated for node");
     },
     [clearActionNodes, setElements]
   );
@@ -527,6 +528,7 @@ const App = () => {
         zoom: cy.zoom(),
         pan: cy.pan(),
       };
+      // console.log("exporting data: ", data);
       const blob = new Blob([JSON.stringify(data, null, 2)], {
         type: "application/json",
       });
@@ -537,7 +539,7 @@ const App = () => {
       a.click();
       URL.revokeObjectURL(url);
     }
-  }, [elements]);
+  }, []);
 
   const importFromJson = useCallback(() => {
     const input = document.createElement("input");
@@ -563,6 +565,12 @@ const App = () => {
 
   const resetGraph = useCallback(() => {
     setElements(initialElements);
+    //// resize node text for the initial node
+    if (cyRef.current) {
+      cyRef.current.one("render", () => {
+        fitTextInCircle(cyRef.current, START_NODE_ID, setElements);
+      });
+    }
   }, []);
 
   //
