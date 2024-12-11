@@ -523,8 +523,11 @@ const App = () => {
   const exportToJson = useCallback(() => {
     const cy = cyRef.current;
     if (cy) {
+      let elementsData = cy.elements().jsons();
+      // filter out any nodes with the class "action-node"
+      elementsData = elementsData.filter((el) => el.classes !== "action-node");
       const data = {
-        elements: elements,
+        elements: elementsData,
         zoom: cy.zoom(),
         pan: cy.pan(),
       };
