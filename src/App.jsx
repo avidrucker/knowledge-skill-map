@@ -30,9 +30,21 @@ const initialElements = [
   },
 ];
 
+const initialPanZoom = { x: 0, y: 0, zoom: 1 };
+
 //
 // ===== Utility Functions =====
 //
+
+/**
+ * Map a zoom level to a certain range of output values.
+ * This function clamps output between outMin and outMax.
+ */
+function mapZoomToVal(zoom, { zoomMin, zoomMax, outMin, outMax }) {
+  const out =
+    outMin + ((zoom - zoomMin) / (zoomMax - zoomMin)) * (outMax - outMin);
+  return Math.min(Math.max(out, outMin), outMax);
+}
 
 /**
  * Break long text into multiple lines to fit better within a node (simple heuristic).
@@ -79,7 +91,6 @@ function breakTextIntoLines(words, lineCount) {
 function findLayoutThatFits(text, fontSize, targetSize, node, cy) {
   const words = text.split(" ");
 
-  // Try increasing line counts from 1 up to number of words
   for (let lineCount = 1; lineCount <= words.length; lineCount++) {
     const candidate = breakTextIntoLines(words, lineCount);
     node.data("label", candidate);
@@ -87,9 +98,8 @@ function findLayoutThatFits(text, fontSize, targetSize, node, cy) {
     cy.forceRender();
 
     const labelBB = node.boundingBox({ label: true });
-    // Check if both width and height of the label fit within targetSize
     if (labelBB.w <= targetSize && labelBB.h <= targetSize) {
-      return { label: candidate, fontSize: (fontSize * 0.8) };
+      return { label: candidate, fontSize: fontSize * 0.8 };
     }
   }
 
@@ -98,7 +108,6 @@ function findLayoutThatFits(text, fontSize, targetSize, node, cy) {
 
 /**
  * Attempt to fit text in the node's circle, using multiple lines and adjusting fontSize.
- * This tries from large to smaller font sizes until it finds the largest that fits.
  */
 function fitTextInCircle(cy, nodeId, setElements) {
   const node = cy.getElementById(nodeId);
@@ -106,34 +115,22 @@ function fitTextInCircle(cy, nodeId, setElements) {
 
   const nodeBB = node.boundingBox({});
   const nodeDiameter = Math.min(nodeBB.w, nodeBB.h);
-
-  // We'll fill about 90% of the node's diameter
   const targetSize = Math.round(nodeDiameter * 1.0);
 
-  // Extract the current label (without line breaks, we'll re-add them)
   const originalLabel = node.data("label").replace(/\n/g, " ");
 
   let bestFit = null;
-  let maxFontSize = 100; // start large
+  let maxFontSize = 100;
   let minFontSize = 6;
 
-  // We'll try from largest to smaller until we find a fitting layout
   for (let size = maxFontSize; size >= minFontSize; size--) {
-    const layout = findLayoutThatFits(
-      originalLabel,
-      size,
-      targetSize,
-      node,
-      cy
-    );
+    const layout = findLayoutThatFits(originalLabel, size, targetSize, node, cy);
     if (layout) {
       bestFit = layout;
-      // Since we are going top-down, the first fit is the largest font size that works
       break;
     }
   }
 
-  // If we found a best fit, update the node data in our elements
   if (bestFit) {
     setElements((els) =>
       els.map((el) =>
@@ -150,7 +147,6 @@ function fitTextInCircle(cy, nodeId, setElements) {
       )
     );
   } else {
-    // If no fit found, just leave as is or use a default small font
     setElements((els) =>
       els.map((el) =>
         el.data.id === nodeId
@@ -182,18 +178,89 @@ const App = () => {
   //
   // ===== State Variables =====
   //
-  const [elements, setElements] = useState(initialElements);
+  const [elements, setElements] = useState(() => {
+    const savedState = localStorage.getItem("graphState");
+    if (savedState) {
+      const state = JSON.parse(savedState);
+      return state.elements || initialElements;
+    }
+    return initialElements;
+  });
   const [selectedNodeId, setSelectedNodeId] = useState(null);
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [renamePosition, setRenamePosition] = useState({ x: 0, y: 0 });
 
-  const tempNodesRef = useRef([]);
   const cyRef = useRef(null);
+  const tempNodesRef = useRef([]);
 
   const lastClickTimeRef = useRef(0);
   const lastClickedNodeRef = useRef(null);
+
+  const lastBackgroundClickTimeRef = useRef(0);
+
+  // For dynamically sizing the rename input
+  const [currentZoom, setCurrentZoom] = useState(() => {
+    const savedState = localStorage.getItem("graphState");
+    if (savedState) {
+      const state = JSON.parse(savedState);
+      return state.zoom || initialPanZoom.zoom;
+    }
+    return initialPanZoom.zoom;
+  });
+  const [currentPan, setCurrentPan] = useState(() => {
+    const savedState = localStorage.getItem("graphState");
+    if (savedState) {
+      const state = JSON.parse(savedState);
+      return state.pan || initialPanZoom.pan;
+    }
+    return initialPanZoom.pan;
+  });
+
+  // Track whether the state has been loaded from local storage
+  const [isLoadedFromLocalStorage, setIsLoadedFromLocalStorage] = useState(false);
+
+  //
+  // ===== Local Storage Load on Mount =====
+  //
+
+  useEffect(() => {
+    // console.log("attempting to load from local storage...");
+    const savedState = localStorage.getItem("graphState");
+    if (savedState) {
+      // console.log("loading from local storage: ", savedState);
+      const state = JSON.parse(savedState);
+      setElements(state.elements);
+      // We'll set zoom/pan after cy is ready
+      if (cyRef.current) {
+        cyRef.current.one("render", () => {
+          cyRef.current.zoom(state.zoom || initialPanZoom.zoom);
+          cyRef.current.pan(state.pan || initialPanZoom.pan);
+        });
+      }
+      setIsLoadedFromLocalStorage(true);
+    } else {
+      // console.log("no saved state found in local storage");
+      setIsLoadedFromLocalStorage(true);
+    }
+  }, []);
+
+  //
+  // ===== Save to Local Storage on changes =====
+  //
+
+  useEffect(() => {
+    if (isLoadedFromLocalStorage && cyRef.current) {
+      const currentState = {
+        elements,
+        zoom: cyRef.current.zoom(),
+        pan: cyRef.current.pan(),
+      };
+      // console.log("saving to local storage: ", currentState);
+      localStorage.setItem("graphState", JSON.stringify(currentState));
+    }
+  }, [elements, isLoadedFromLocalStorage, currentZoom, currentPan]);
 
   //
   // ===== Action Node Cleanup =====
@@ -210,9 +277,6 @@ const App = () => {
   // ===== Node Manipulation Helpers =====
   //
 
-  /**
-   * Add a new child node connected to the given parent node.
-   */
   const addNode = useCallback(
     (parentNodeId) => {
       if (!parentNodeId || !cyRef.current) {
@@ -253,9 +317,6 @@ const App = () => {
     [setElements]
   );
 
-  /**
-   * Show color selection action-nodes for a single-clicked node.
-   */
   const displayColorOptions = useCallback(
     (node) => {
       const nodeId = node.id();
@@ -297,9 +358,6 @@ const App = () => {
     [setElements]
   );
 
-  /**
-   * Show rename/delete/add action-nodes for a double-clicked node.
-   */
   const displayNodeActions = useCallback(
     (node) => {
       const nodeId = node.id();
@@ -344,25 +402,45 @@ const App = () => {
     [setElements]
   );
 
-  /**
-   * Start the renaming process for a given node.
-   */
+  //
+  // ===== Context Menu for Background Double-Click =====
+  //
+
+  const displayBackgroundActions = useCallback((pos) => {
+    // Create four action nodes: 'Fit Map', 'Reset', 'Export', 'Import'
+    const offsetY = 30;
+    const spacing = 70;
+    const labels = ["Fit Map", "Reset", "Export", "Import"];
+    const actionNodes = labels.map((label, i) => {
+      const actionId = `btn-bg-${label.replace(" ", "-").toLowerCase()}`;
+      return {
+        ...createActionNode(
+          actionId,
+          label,
+          { x: pos.x + (i - 1.5) * spacing, y: pos.y - offsetY }
+        ),
+        data: { id: actionId, label: label, parentNode: null }
+      };
+    });
+
+    setElements((els) => [...els, ...actionNodes]);
+    tempNodesRef.current.push(...actionNodes.map((n) => n.data.id));
+  }, [setElements]);
+
+  //
+  // ===== Rename Handling =====
+  //
+
   const startRenaming = useCallback((node) => {
     let labelText = node.data("label").replace(/\n/g, " ");
     setIsRenaming(true);
     setRenameValue(labelText);
 
-    const containerRect = cyRef.current.container().getBoundingClientRect();
-    const pos = node.position();
-    setRenamePosition({
-      x: containerRect.left + pos.x,
-      y: containerRect.top + pos.y,
-    });
+    // Use renderedPosition to get correct on-screen coordinates
+    const nodePos = node.renderedPosition();
+    setRenamePosition({ x: nodePos.x, y: nodePos.y });
   }, []);
 
-  /**
-   * Commit a rename action.
-   */
   const commitRename = useCallback(() => {
     if (selectedNodeId && cyRef.current) {
       const cy = cyRef.current;
@@ -379,7 +457,6 @@ const App = () => {
         )
       );
 
-      // After label update, fit text using our new method
       setTimeout(() => {
         fitTextInCircle(cy, selectedNodeId, setElements);
       }, 0);
@@ -389,18 +466,16 @@ const App = () => {
     clearActionNodes();
   }, [selectedNodeId, renameValue, setElements, clearActionNodes]);
 
-  /**
-   * Cancel renaming.
-   */
   const cancelRename = useCallback(() => {
     setIsRenaming(false);
     setRenameValue("");
     clearActionNodes();
   }, [clearActionNodes]);
 
-  /**
-   * Delete a node and all its descendants.
-   */
+  //
+  // ===== Node Deletion and Color Change =====
+  //
+
   const deleteNodeAndDescendants = useCallback(
     (nodeId) => {
       if (nodeId === START_NODE_ID) return;
@@ -426,9 +501,6 @@ const App = () => {
     [clearActionNodes, setElements]
   );
 
-  /**
-   * Change a node's type/color.
-   */
   const changeNodeColorType = useCallback(
     (nodeId, newType) => {
       setElements((els) =>
@@ -443,13 +515,80 @@ const App = () => {
     [clearActionNodes, setElements]
   );
 
-  /**
-   * Handle clicks on action nodes (color, rename, add new, delete).
-   */
+  //
+  // ===== Export/Import Functions =====
+  //
+
+  const exportToJson = useCallback(() => {
+    const cy = cyRef.current;
+    if (cy) {
+      const data = {
+        elements: elements,
+        zoom: cy.zoom(),
+        pan: cy.pan(),
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "graph.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, [elements]);
+
+  const importFromJson = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (ee) => {
+        const data = JSON.parse(ee.target.result);
+        setElements(data.elements || initialElements);
+        if (cyRef.current) {
+          cyRef.current.one("render", () => {
+            cyRef.current.zoom(data.zoom || 1); ////
+            cyRef.current.pan(data.pan || { x: 0, y: 0 });
+          });
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
+
+  const resetGraph = useCallback(() => {
+    setElements(initialElements);
+  }, []);
+
+  //
+  // ===== Handle Action Node Click =====
+  //
+
   const handleActionNodeClick = useCallback(
     (node) => {
       const label = node.data("label");
       const parentNodeId = node.data("nodeParent") || node.data("parentNode");
+
+      // Background actions have no parentNode, handle them first
+      if (!parentNodeId && label) {
+        if (label === "Fit Map") {
+          cyRef.current.fit();
+        } else if (label === "Reset") {
+          resetGraph();
+        } else if (label === "Export") {
+          exportToJson();
+        } else if (label === "Import") {
+          importFromJson();
+        }
+        clearActionNodes();
+        return;
+      }
+
       if (!parentNodeId) return;
 
       if (label === "Delete") {
@@ -465,32 +604,54 @@ const App = () => {
           }, 0);
         }
       } else {
-        // label is a node type (color)
+        // This is a color/type label
         changeNodeColorType(parentNodeId, label);
       }
     },
-    [changeNodeColorType, deleteNodeAndDescendants, startRenaming, addNode]
+    [
+      deleteNodeAndDescendants,
+      startRenaming,
+      addNode,
+      changeNodeColorType,
+      resetGraph,
+      exportToJson,
+      importFromJson,
+      clearActionNodes,
+    ]
   );
 
   //
-  // ===== Cytoscape Initialization & Event Handling =====
+  // ===== Keyboard Shortcuts for Renaming =====
   //
 
-  // Handle keyboard shortcuts for renaming
   const handleKeyDown = (e) => {
     if (e.key === "Enter") commitRename();
     else if (e.key === "Escape") cancelRename();
   };
 
+  //
+  // ===== Cytoscape Initialization & Event Handling =====
+  //
+
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+
+    // Update currentZoom state whenever cy zooms or pans
+    const updateZoomPan = () => {
+      // console.log("updating zoom pan");
+      setCurrentZoom(cy.zoom());
+      setCurrentPan({...cy.pan()});
+      // console.log("zoom: ", cy.zoom());
+      // console.log("pan: ", cy.pan());
+    };
+    cy.on("zoom pan", updateZoomPan);
 
     const onReady = () => {
       const onTapNode = (evt) => {
         const node = evt.target;
 
-        // If it's an action-node (button), handle action
+        // If it's an action-node, handle action
         if (node.hasClass("action-node")) {
           handleActionNodeClick(node);
           clearActionNodes();
@@ -501,19 +662,19 @@ const App = () => {
         clearActionNodes();
 
         const currentTime = Date.now();
-        // Check for double-click
+        // Check for double-click on node
         if (
           lastClickedNodeRef.current &&
           lastClickedNodeRef.current.id() === node.id() &&
           currentTime - lastClickTimeRef.current < 300
         ) {
-          // Double click event
+          // Double click on node
           setSelectedNodeId(node.id());
           displayNodeActions(node);
           lastClickedNodeRef.current = null;
           lastClickTimeRef.current = 0;
         } else {
-          // Single click event
+          // Single click on node
           lastClickedNodeRef.current = node;
           lastClickTimeRef.current = currentTime;
           setSelectedNodeId(node.id());
@@ -523,19 +684,26 @@ const App = () => {
 
       const onTapBackground = (evt) => {
         if (evt.target === cy) {
-          setSelectedNodeId(null);
-          clearActionNodes();
+          const currentTime = Date.now();
+          // Check double-click on background
+          if (currentTime - lastBackgroundClickTimeRef.current < 300) {
+            // Double click on background
+            // Create context action nodes at the clicked position
+            const evtPos = evt.position;
+            displayBackgroundActions(evtPos);
+            lastBackgroundClickTimeRef.current = 0;
+          } else {
+            lastBackgroundClickTimeRef.current = currentTime;
+            setSelectedNodeId(null);
+            clearActionNodes();
+          }
         }
       };
 
-      // Attach event handlers once
       if (!cy.scratch("_handlersAttached")) {
-        console.log("attaching handlers");
         cy.on("tap", "node", onTapNode);
         cy.on("tap", onTapBackground);
         cy.scratch("_handlersAttached", true);
-      } else {
-        console.log("Handlers already attached, not reattaching.");
       }
 
       return () => {
@@ -544,7 +712,17 @@ const App = () => {
       };
     };
     cy.ready(onReady);
-  }, []);
+
+    return () => {
+      cy.off("zoom pan", updateZoomPan);
+    };
+  }, [
+    displayNodeActions,
+    displayColorOptions,
+    displayBackgroundActions,
+    handleActionNodeClick,
+    clearActionNodes,
+  ]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -580,7 +758,6 @@ const App = () => {
         label: "data(label)",
         "text-valign": "center",
         "text-halign": "center",
-        // "text-max-width": "50px",
         "text-wrap": "wrap",
         "font-size": "data(fontSize)",
         width: 80,
@@ -638,7 +815,7 @@ const App = () => {
     {
       selector: "node:selected",
       style: {
-        "border-width": 3
+        "border-width": 3,
       },
     },
   ];
@@ -646,6 +823,14 @@ const App = () => {
   //
   // ===== Render =====
   //
+
+  // Use a mapping for the rename input size
+  // Example mapping: when zoom=1, font=12px, width=80px; scale linearly
+  const zoomMappingFont = { zoomMin: 0.5, zoomMax: 2, outMin: 12, outMax: 24 };
+  const zoomMappingWidth = { zoomMin: 0.5, zoomMax: 2, outMin: 40, outMax: 160 };
+
+  const scaledFontSize = mapZoomToVal(currentZoom, zoomMappingFont);
+  const scaledWidth = mapZoomToVal(currentZoom, zoomMappingWidth);
 
   return (
     <div style={{ width: "100%", height: "100vh", position: "relative" }}>
@@ -660,6 +845,8 @@ const App = () => {
         }}
       >
         <div>Current selected node: {selectedNodeId || "None"}</div>
+        <div>Current zoom: {currentZoom}</div>
+        <div>Current pan: {currentPan.x} {currentPan.y}</div>
       </div>
 
       <CytoscapeComponent
@@ -682,11 +869,13 @@ const App = () => {
           onBlur={cancelRename}
           style={{
             position: "absolute",
-            top: renamePosition.y - 40,
-            left: renamePosition.x - 40,
-            width: "80px",
-            fontSize: "12px",
+            top: renamePosition.y - scaledWidth / 8,
+            left: renamePosition.x - scaledWidth / 2,
+            width: scaledWidth + "px",
+            fontSize: scaledFontSize + "px",
             padding: "2px",
+            background: "white",
+            color: "black"
           }}
           autoFocus
         />
